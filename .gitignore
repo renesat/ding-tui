@@ -1,0 +1,8 @@
+target/
+**/*.rs.bk
+debug/
+/result
+/result-lib
+.direnv
+.envrc
+.pre-commit-config.yaml

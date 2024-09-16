@@ -1,0 +1,19 @@
+[package]
+authors = ["renesat <self@renesat.me>"]
+edition = "2021"
+name = "ding-rs"
+description = "TODO"
+version = "0.1.0"
+
+[dependencies]
+anyhow = "1.0.89"
+chrono = { version = "0.4.38", features = ["serde"] }
+crossterm = "0.28.1"
+ratatui = "0.28.1"
+reqwest = { version = "0.12", features = ["json"]}
+serde = { version = "1.0.210", features = ["derive", "rc"] }
+simple-error = "0.3.1"
+thiserror = "1.0.63"
+tokio = { version = "1", features = ["full"] }
+url = { version = "2", features = ["serde"] }
+
