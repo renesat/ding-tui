@@ -1,0 +1,17 @@
+[package]
+authors = ["renesat <self@renesat.me>"]
+edition = "2021"
+name = "ding-cli"
+description = "TODO"
+version = "0.1.0"
+
+[dependencies]
+ding-rs = { path = "../ding-rs" }
+clap = { version = "4.0", features = ["env", "derive"] }
+clap_complete = "4.0"
+url = { version = "2", features = ["serde"] }
+anyhow = "1.0.89"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0" }
+colored_json = "5.0.0"
