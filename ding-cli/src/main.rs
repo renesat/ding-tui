@@ -1,11 +1,116 @@
 use anyhow::Result;
 use clap::builder::ArgPredicate;
-use clap::ValueHint;
-use clap::{CommandFactory, Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand, ValueEnum, ValueHint};
 use colored_json::to_colored_json_auto;
+use crossterm::style::Stylize;
+use iocraft::ElementExt;
+use serde::Serialize;
 use url::Url;
 
-use ding_rs::{BookmarkRequest, BookmarksRequest, DingClient, TagRequest, TagsRequest};
+use ding_rs::{Bookmark, BookmarkRequest, BookmarksRequest, DingClient, TagRequest, TagsRequest};
+
+#[derive(ValueEnum, Clone, Default)]
+enum OutputFormat {
+    #[default]
+    Human,
+    Json,
+    FlattenJson,
+    Csv,
+}
+
+trait ToOutput: Serialize {
+    fn to_human_format(&self) -> Result<String>;
+    fn to_csv_format(&self) -> Result<String>;
+    fn to_json_format(&self) -> Result<String> {
+        Ok(to_colored_json_auto(&self)?)
+    }
+    fn to_flatten_json_format(&self) -> Result<String> {
+        Ok(serde_json::to_string(self)?)
+    }
+    fn to_format(&self, format: OutputFormat) -> Result<String> {
+        match format {
+            OutputFormat::Human => self.to_human_format(),
+            OutputFormat::Json => self.to_json_format(),
+            OutputFormat::FlattenJson => self.to_flatten_json_format(),
+            OutputFormat::Csv => self.to_csv_format(),
+        }
+    }
+}
+
+impl ToOutput for Bookmark {
+    fn to_human_format(&self) -> Result<String> {
+        let title = match (&self.website_title, &self.title) {
+            (_, Some(title)) => title,
+            (Some(title), None) => title,
+            (None, None) => &self.url.to_string(),
+        };
+        let description = match (&self.website_description, &self.description) {
+            (_, Some(description)) => description,
+            (Some(description), None) => description,
+            (None, None) => "-",
+        };
+        let notes = if let Some(notes) = &self.notes {
+            notes
+        } else {
+            "-"
+        };
+        let (width, _) = crossterm::terminal::size()?;
+        let formated_description = iocraft::prelude::element! {
+            iocraft::prelude::Box(
+                border_style: iocraft::prelude::BorderStyle::None,
+                max_width: width,
+                padding_left: iocraft::prelude::Padding::Length(2),
+                padding_right: iocraft::prelude::Padding::Length(2),
+            ) {
+                iocraft::prelude::Text(content: format!("{} {}", "Description:".to_string().magenta(), description))
+            }
+        }.to_string();
+        let formated_notes = iocraft::prelude::element! {
+            iocraft::prelude::Box(
+                border_style: iocraft::prelude::BorderStyle::None,
+                max_width: width,
+                padding_left: iocraft::prelude::Padding::Length(2),
+                padding_right: iocraft::prelude::Padding::Length(2),
+            ) {
+                iocraft::prelude::Text(content: format!("{} {}", "Notes:".to_string().magenta(), notes))
+            }
+        }.to_string();
+        Ok(format!(
+            "{} {}\n  {} {}\n  {} {}\n{}{}",
+            format!(
+                "(ID: {}{}{})",
+                self.id,
+                if self.is_archived { ",📦" } else { "" },
+                if self.unread { ",📕" } else { ",📖" }
+            )
+            .green()
+            .bold(),
+            title.clone().bold().blue(),
+            "Url:".to_string().magenta(),
+            self.url,
+            "Tags:".to_string().magenta(),
+            self.tag_names.join(" "),
+            formated_description,
+            formated_notes,
+        ))
+    }
+    fn to_csv_format(&self) -> Result<String> {
+        todo!()
+    }
+}
+
+impl ToOutput for Vec<Bookmark> {
+    fn to_human_format(&self) -> Result<String> {
+        Ok(self
+            .iter()
+            .map(|x| x.to_human_format())
+            .collect::<Result<Vec<String>>>()?
+            .join("\n"))
+    }
+    fn to_csv_format(&self) -> Result<String> {
+        todo!()
+    }
+}
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -19,6 +124,12 @@ struct Cli {
 
     #[arg(long, env = "DING_TOKEN", global = true, hide_env_values = true)]
     token: Option<String>,
+
+    #[arg(short, long, global = true, default_value_t)]
+    verbose: bool,
+
+    #[arg(short = 'F', long, global = true, default_value_t, value_enum)]
+    output_format: OutputFormat,
 }
 
 #[derive(Subcommand)]
@@ -130,7 +241,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match &cli.command {
         Commands::Archive { id, url } => {
             let client = create_client(&cli)?;
-            let bookmark = match (id, url) {
+            match (id, url) {
                 (Some(id), None) => client.archive_bookmark(*id).await?,
                 (None, Some(_url)) => {
                     todo!()
@@ -139,11 +250,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     todo!()
                 }
             };
-            println!("{}", to_colored_json_auto(&bookmark)?);
+            let bookmark: Bookmark = client.bookmark(id.expect("LOOL")).await?;
+            println!("{}", bookmark.to_format(cli.output_format)?);
         }
         Commands::Unarchive { id, url } => {
             let client = create_client(&cli)?;
-            let bookmark = match (id, url) {
+            match (id, url) {
                 (Some(id), None) => client.unarchive_bookmark(*id).await?,
                 (None, Some(_url)) => {
                     todo!()
@@ -152,11 +264,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     todo!()
                 }
             };
-            println!("{}", to_colored_json_auto(&bookmark)?);
+            let bookmark: Bookmark = client.bookmark(id.expect("LOOL")).await?;
+            println!("{}", bookmark.to_format(cli.output_format)?);
         }
         Commands::Delete { id, url } => {
             let client = create_client(&cli)?;
-            let bookmark = match (id, url) {
+            match (id, url) {
                 (Some(id), None) => client.delete_bookmark(*id).await?,
                 (None, Some(_url)) => {
                     todo!()
@@ -165,7 +278,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     todo!()
                 }
             };
-            println!("{}", to_colored_json_auto(&bookmark)?);
+            let bookmark: Bookmark = client.bookmark(id.expect("LOOL")).await?;
+            println!("{}", bookmark.to_format(cli.output_format)?);
         }
         Commands::Tags { all, limit, offset } => {
             let client = create_client(&cli)?;
@@ -215,7 +329,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 tag_names: tag_names.clone(),
             };
             let bookmark = client.create_bookmark(req).await?;
-            println!("{}", to_colored_json_auto(&bookmark)?);
+            println!("{}", bookmark.to_format(cli.output_format)?);
         }
         Commands::Bookmarks {
             query,
@@ -263,7 +377,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .results
                 }
             };
-            println!("{}", to_colored_json_auto(&bookmarks)?);
+            println!("{}", bookmarks.to_format(cli.output_format)?);
         }
     };
     Ok(())

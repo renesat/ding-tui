@@ -1,10 +1,12 @@
-use anyhow::Result;
+// use anyhow::Result;
 use reqwest::{RequestBuilder, Response, Url};
 use serde::de::DeserializeOwned;
-use simple_error::SimpleError;
 use std::future::Future;
 
+use crate::errors::*;
 use crate::types::*;
+
+type Result<T, E = DingError> = std::result::Result<T, E>;
 
 pub struct DingClient {
     client: reqwest::Client,
@@ -149,22 +151,16 @@ impl DingClient {
             ]))
     }
 
-    async fn _send_request<O: DeserializeOwned, SFut, EFut>(
+    async fn _send_request<O: DeserializeOwned, SFut>(
         &self,
         req: RequestBuilder,
         success: impl Fn(Response) -> SFut,
-        error: impl Fn(Response) -> EFut,
     ) -> Result<O>
     where
         SFut: Future<Output = Result<O>>,
-        EFut: Future<Output = anyhow::Error>,
     {
-        let resp = req.send().await?;
-        if resp.status().is_success() {
-            success(resp).await
-        } else {
-            Err(error(resp).await)
-        }
+        let resp = req.send().await?.error_for_status()?;
+        success(resp).await
     }
 
     async fn _empty_response_handler(_resp: Response) -> Result<()> {
@@ -175,29 +171,17 @@ impl DingClient {
         Ok(resp.json().await?)
     }
 
-    async fn _default_unsuccess_error(_resp: Response) -> anyhow::Error {
-        anyhow::Error::new(SimpleError::new("Unsucses error code"))
-    }
-
     async fn _send_request_with_json_output<O: DeserializeOwned>(
         &self,
         req: RequestBuilder,
     ) -> Result<O> {
-        self._send_request(
-            req,
-            DingClient::_json_response_handler,
-            DingClient::_default_unsuccess_error,
-        )
-        .await
+        self._send_request(req, DingClient::_json_response_handler)
+            .await
     }
 
     async fn _send_request_without_output(&self, req: RequestBuilder) -> Result<()> {
-        self._send_request(
-            req,
-            DingClient::_empty_response_handler,
-            DingClient::_default_unsuccess_error,
-        )
-        .await
+        self._send_request(req, DingClient::_empty_response_handler)
+            .await
     }
 
     async fn _load_all<O, P: IterableRequest, R: IterableResponse<O>, RFut>(

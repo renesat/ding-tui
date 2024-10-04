@@ -77,9 +77,12 @@ pub struct BookmarksResponse {
 pub struct Bookmark {
     pub id: u64,
     pub url: Url,
-    pub title: String,
-    pub description: String,
-    pub notes: String,
+    #[serde(deserialize_with = "empty_str")]
+    pub title: Option<String>,
+    #[serde(deserialize_with = "empty_str")]
+    pub description: Option<String>,
+    #[serde(deserialize_with = "empty_str")]
+    pub notes: Option<String>,
     pub website_title: Option<String>,
     pub website_description: Option<String>,
     #[serde(deserialize_with = "empty_url")]
@@ -114,6 +117,18 @@ pub struct SearchPreferences {
     pub sort: String,
     pub shared: String,
     pub unread: String,
+}
+
+fn empty_str<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: String = Deserialize::deserialize(deserializer)?;
+    if s.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(s))
+    }
 }
 
 fn empty_url<'de, D>(deserializer: D) -> Result<Option<Url>, D::Error>
