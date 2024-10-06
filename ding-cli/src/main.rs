@@ -7,7 +7,9 @@ use iocraft::ElementExt;
 use serde::Serialize;
 use url::Url;
 
-use ding_rs::{Bookmark, BookmarkRequest, BookmarksRequest, DingClient, TagRequest, TagsRequest};
+use ding_rs::{
+    Bookmark, BookmarkRequest, BookmarksRequest, DingClient, Tag, TagRequest, TagsRequest,
+};
 
 #[derive(ValueEnum, Clone, Default)]
 enum OutputFormat {
@@ -112,6 +114,29 @@ impl ToOutput for Vec<Bookmark> {
     }
 }
 
+impl ToOutput for Vec<Tag> {
+    fn to_human_format(&self) -> Result<String> {
+        Ok(self
+            .iter()
+            .map(|x| x.name.clone())
+            .collect::<Vec<_>>()
+            .join("\n"))
+    }
+    fn to_json_format(&self) -> Result<String> {
+        Ok(to_colored_json_auto(
+            &self.iter().map(|x| x.name.clone()).collect::<Vec<_>>(),
+        )?)
+    }
+    fn to_flatten_json_format(&self) -> Result<String> {
+        Ok(serde_json::to_string(
+            &self.iter().map(|x| x.name.clone()).collect::<Vec<_>>(),
+        )?)
+    }
+    fn to_csv_format(&self) -> Result<String> {
+        todo!()
+    }
+}
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 #[command(propagate_version = true)]
@@ -136,24 +161,15 @@ struct Cli {
 enum Commands {
     Unarchive {
         #[arg(short, long, conflicts_with = "url")]
-        id: Option<u64>,
-
-        #[arg(short, long, conflicts_with = "id")]
-        url: Option<Url>,
+        id: u64,
     },
     Archive {
         #[arg(short, long, conflicts_with = "url")]
-        id: Option<u64>,
-
-        #[arg(short, long, conflicts_with = "id")]
-        url: Option<Url>,
+        id: u64,
     },
     Delete {
         #[arg(short, long, conflicts_with = "url")]
-        id: Option<u64>,
-
-        #[arg(short, long, conflicts_with = "id")]
-        url: Option<Url>,
+        id: u64,
     },
     AddTag {
         #[arg(short, long)]
@@ -227,80 +243,30 @@ enum Commands {
     },
 }
 
-fn create_client(cli: &Cli) -> Result<DingClient> {
-    Ok(DingClient::new(
-        cli.host.clone().expect("Not Found URL"),
-        cli.token.clone().expect("Not Found Token").to_string(),
-    ))
-}
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::Archive { id, url } => {
+        Commands::Archive { id } => {
             let client = create_client(&cli)?;
-            match (id, url) {
-                (Some(id), None) => client.archive_bookmark(*id).await?,
-                (None, Some(_url)) => {
-                    todo!()
-                }
-                _ => {
-                    todo!()
-                }
-            };
-            let bookmark: Bookmark = client.bookmark(id.expect("LOOL")).await?;
+            let bookmark = archive_bookmark(&client, *id).await?;
             println!("{}", bookmark.to_format(cli.output_format)?);
         }
-        Commands::Unarchive { id, url } => {
+        Commands::Unarchive { id } => {
             let client = create_client(&cli)?;
-            match (id, url) {
-                (Some(id), None) => client.unarchive_bookmark(*id).await?,
-                (None, Some(_url)) => {
-                    todo!()
-                }
-                _ => {
-                    todo!()
-                }
-            };
-            let bookmark: Bookmark = client.bookmark(id.expect("LOOL")).await?;
+            let bookmark = unarchive_bookmark(&client, *id).await?;
             println!("{}", bookmark.to_format(cli.output_format)?);
         }
-        Commands::Delete { id, url } => {
+        Commands::Delete { id } => {
             let client = create_client(&cli)?;
-            match (id, url) {
-                (Some(id), None) => client.delete_bookmark(*id).await?,
-                (None, Some(_url)) => {
-                    todo!()
-                }
-                _ => {
-                    todo!()
-                }
-            };
-            let bookmark: Bookmark = client.bookmark(id.expect("LOOL")).await?;
+            let bookmark = delete_bookmark(&client, *id).await?;
             println!("{}", bookmark.to_format(cli.output_format)?);
         }
         Commands::Tags { all, limit, offset } => {
             let client = create_client(&cli)?;
-            let tags = match all {
-                true => client.all_tags(Default::default()).await?,
-                false => {
-                    client
-                        .tags(TagsRequest {
-                            limit: *limit,
-                            offset: *offset,
-                        })
-                        .await?
-                        .results
-                }
-            };
-            println!("{}", to_colored_json_auto(&tags)?);
-        }
-        Commands::Completion { shell } => {
-            let mut cmd = Cli::command();
-            let cmd_name: String = cmd.get_name().into();
-            clap_complete::generate(*shell, &mut cmd, cmd_name, &mut std::io::stdout());
+            let tags = get_tags(&client, *all, *limit, *offset).await?;
+            println!("{}", tags.to_format(cli.output_format)?);
         }
         Commands::AddTag { name } => {
             let client = create_client(&cli)?;
@@ -379,6 +345,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             println!("{}", bookmarks.to_format(cli.output_format)?);
         }
+        Commands::Completion { shell } => {
+            let mut cmd = Cli::command();
+            let cmd_name: String = cmd.get_name().into();
+            clap_complete::generate(*shell, &mut cmd, cmd_name, &mut std::io::stdout());
+        }
     };
     Ok(())
+}
+
+fn create_client(cli: &Cli) -> Result<DingClient> {
+    Ok(DingClient::new(
+        cli.host.clone().expect("Not Found URL"),
+        cli.token.clone().expect("Not Found Token").to_string(),
+    ))
+}
+
+async fn archive_bookmark(client: &DingClient, id: u64) -> Result<Bookmark> {
+    client.archive_bookmark(id).await?;
+    Ok(client.bookmark(id).await?)
+}
+
+async fn unarchive_bookmark(client: &DingClient, id: u64) -> Result<Bookmark> {
+    client.unarchive_bookmark(id).await?;
+    Ok(client.bookmark(id).await?)
+}
+
+async fn delete_bookmark(client: &DingClient, id: u64) -> Result<Bookmark> {
+    let bookmark = client.bookmark(id).await?;
+    client.delete_bookmark(id).await?;
+    Ok(bookmark)
+}
+
+async fn get_tags(
+    client: &DingClient,
+    all: bool,
+    limit: Option<u64>,
+    offset: Option<u64>,
+) -> Result<Vec<Tag>> {
+    Ok(if all {
+        client.all_tags(Default::default()).await?
+    } else {
+        client.tags(TagsRequest { limit, offset }).await?.results
+    })
 }
