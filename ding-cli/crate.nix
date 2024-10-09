@@ -5,10 +5,12 @@
 }: {
   autoWire = ["crate" "clippy" "doc"];
   crane.args = {
-    buildInputs = lib.optionals pkgs.stdenv.isDarwin (
-      with pkgs.apple_sdk_frameworks; [
-        IOKit
-      ]
-    );
+    buildInputs =
+      [pkgs.openssl]
+      ++ lib.optionals pkgs.stdenv.isDarwin (
+        with pkgs.darwin.apple_sdk.frameworks; [
+          IOKit
+        ]
+      );
   };
 }

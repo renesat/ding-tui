@@ -8,7 +8,7 @@
     buildInputs =
       [pkgs.openssl]
       ++ lib.optionals pkgs.stdenv.isDarwin (
-        with pkgs.apple_sdk_frameworks; [
+        with pkgs.darwin.apple_sdk.frameworks; [
           IOKit
         ]
       );
