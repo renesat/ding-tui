@@ -72,10 +72,12 @@
             self'.devShells.rust
           ];
           packages = [
+            pkgs.bacon
             pkgs.just
             pkgs.cargo-watch
             config.process-compose.cargo-doc-live.outputs.package
             config.rust-project.crates.ding-rs.crane.args.buildInputs
+            config.rust-project.crates.ding-cli.crane.args.buildInputs
           ];
           shellHook = config.pre-commit.installationScript;
         };
