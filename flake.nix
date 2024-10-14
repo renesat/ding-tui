@@ -39,10 +39,16 @@
 
         pre-commit.settings.hooks = {
           # FIXME: Not working with `nix flake check`. Wait until merge https://github.com/cachix/git-hooks.nix/pull/396
-          clippy = {
+          # clippy = {
+          #   enable = true;
+          #   packageOverrides.cargo = (config.rust-project.crane-lib.packages {}).cargo;
+          #   packageOverrides.clippy = (config.rust-project.crane-lib.packages {}).clippy;
+          # };
+          custom-clippy = {
             enable = true;
-            packageOverrides.cargo = (config.rust-project.crane-lib.packages {}).cargo;
-            packageOverrides.clippy = (config.rust-project.crane-lib.packages {}).clippy;
+            name = "clippy";
+            entry = "cargo clippy";
+            pass_filenames = false;
           };
           rustfmt.enable = true;
           alejandra.enable = true;
